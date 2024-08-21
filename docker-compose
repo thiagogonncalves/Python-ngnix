@@ -1,0 +1,68 @@
+version: '3.7'
+
+services:
+  te-backend-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: te-backend-web
+    command: sh -c "python manage.py makemigrations && python manage.py migrate && service nginx start && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./media:/app/media
+      - ./core/static:/app/core/static
+      - ./static:/static
+      - ./nginx.conf:/etc/nginx/nginx.conf  # Monta o arquivo de configuração do Nginx
+    ports:
+      - 8044:8000  # Porta para acessar o Django diretamente (se necessário)
+      - 8080:80    # Porta para acessar via Nginx
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: on-failure
+
+  db:
+    image: postgres:14-alpine
+    container_name: te-backend-db
+    volumes:
+      - /usr/local/docker/transporte-backend/postgres/data:/var/lib/postgresql/data
+      - /mnt/backups/backup_siste:/opt/backup_siste/
+    ports:
+      - 5438:5432
+    env_file:
+      - .env.db
+    restart: on-failure
+
+  redis:
+    image: redis:alpine
+    container_name: te-redis
+    ports:
+      - 6380:6379
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: te-celery
+    command: celery -A config worker -l info
+    volumes:
+      - .:/app/
+    depends_on:
+      - te-backend-web
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: te-celery-beat
+    command: celery -A config beat -l info
+    volumes:
+      - .:/app/
+    depends_on:
+      - celery
+
+# networks:
+#   default:
+#     external:
+#       name: $DEFAULT_NETWORK
+
